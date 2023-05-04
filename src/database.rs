@@ -1,7 +1,7 @@
 use std::usize;
 
 use crate::types::Secret;
-use sqlite::{Connection, Error, Value};
+use sqlite::{Connection, Error};
 
 pub struct Store {
     database_connection : Connection 
@@ -54,16 +54,111 @@ impl Store {
 
     }
 
-    pub fn insert_secret(&self, secret:Secret) -> Result<(), Error> {
+    pub fn insert_secret(&self, secret:&Secret) -> Result<(), Error> {
         let query = "INSERT INTO passwords (username, password, description) VALUES(?,?,?)";
         let mut insert_statement = self.database_connection.prepare(query).unwrap();
         insert_statement.bind((1, secret.get_username().as_str())).unwrap();
         insert_statement.bind((2, secret.get_password().as_str())).unwrap();
         insert_statement.bind((3, secret.get_description().as_str())).unwrap();
 
-        insert_statement.next().unwrap();
-        
+        insert_statement.next()?;
+
         Ok(())
 
     }
+
+    pub fn update_secret(&self, id:usize, username:String, password:String, description:String) -> Result<(), Error> {
+        let query = "UPDATE passwords
+        SET 
+            username = ?,
+            password = ?,
+            description = ?
+        WHERE
+            id =?
+        ";
+
+        let mut update_statement = self.database_connection.prepare(query).unwrap();
+        update_statement.bind((1, username.as_str())).unwrap();
+        update_statement.bind((2, password.as_str())).unwrap();
+        update_statement.bind((3, description.as_str())).unwrap();
+        update_statement.bind((4, id as f64)).unwrap();
+
+        update_statement.next()?;
+
+        Ok(())
+
+    }
+
+    pub fn delete_secret(&self, id:usize) -> Result<(), Error> {
+        let query = "DELETE FROM passwords WHERE id=?";
+        let mut delete_statement = self.database_connection.prepare(query).unwrap();
+        delete_statement.bind((1, id as f64)).unwrap();
+        delete_statement.next()?;
+        Ok(())
+        
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    pub const TEST_DB_PATH:&str = "test_files/test_db.db";
+
+    #[test]
+    fn test_connection() {
+        
+        let store = Store::connect(String::from(TEST_DB_PATH)).unwrap();
+        assert_eq!(1,1);
+    }
+
+    #[test]
+    fn test_insert_secret() {
+        let store = Store::connect(String::from(TEST_DB_PATH)).unwrap();
+
+        store.create_secrets_table().unwrap();
+
+        let test_secret = Secret::new(
+            0,
+            String::from("test_username"),
+            String::from("test_password"),
+            String::from("test_description")
+        );
+
+        store.insert_secret(&test_secret).unwrap();
+
+        assert_eq!(1,1);
+    }
+
+    #[test]
+    fn test_update_secret() {
+        let store = Store::connect(String::from(TEST_DB_PATH)).unwrap();
+
+        store.update_secret(1,
+            String::from("test_username_2"),
+            String::from("test_password2"),
+            String::from("Test Description 2")
+        ).unwrap();
+
+        assert_eq!(1,1);
+    }
+
+    #[test]
+    fn test_all_secrets_available() {
+        let store = Store::connect(String::from(TEST_DB_PATH)).unwrap();
+
+        let secrets = store.fetch_secrets().unwrap();
+
+        assert!(secrets.len() > 0);
+    }
+
+    #[test]
+    fn test_delete_secret() { 
+        let store = Store::connect(String::from(TEST_DB_PATH)).unwrap();
+
+        store.delete_secret(1).unwrap();
+        assert_eq!(1,1);
+    }
+
 }

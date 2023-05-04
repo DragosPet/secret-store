@@ -34,7 +34,15 @@ fn main() {
 
     );
 
-    store.insert_secret(test_secret).unwrap();
+    //store.insert_secret(&test_secret).unwrap();
+
+    //store.update_secret(2,
+    //    String::from("test_username2"),
+    //    String::from("test_password2"),
+    //    String::from("test_description2")
+    //).unwrap();
+
+    store.delete_secret(3).unwrap();
 
     let secrets = match store.fetch_secrets() {
         Ok(secrets) => {
