@@ -1,1 +1,3 @@
 /target
+# ignore database for storing the actual credentials
+/db
