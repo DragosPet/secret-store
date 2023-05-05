@@ -38,7 +38,7 @@ impl Store {
             let id = record.read::<i64, _>("id");
             let username = record.read::<&str,_>("username");
             let password = record.read::<&str,_>("password");
-            let description = record.read::<&str,_>("password");
+            let description = record.read::<&str,_>("description");
 
             let secret = Secret::new(
                 id as usize,

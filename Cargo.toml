@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 magic-crypt = "3.1.12"
 sqlite = "0.30.4"
+eframe = "0.21.3"
