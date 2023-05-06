@@ -52,22 +52,71 @@ fn main() {
     );
 
 
-
-
 }
 
-
-struct DecryptButton {
+#[derive(Clone)]
+pub struct UpdateSecret {
     id: u64,
-    button: egui::Button
+    secret: Secret,
+    show_window: bool,
+    user_to_update: String,
+    desc_to_update: String,
+    pass_to_update: String
 }
 
-impl Default for DecryptButton {
+impl Default for UpdateSecret {
     fn default() -> Self {
         Self {
-            id: 0,
-            button: egui::Button::new("Decrypt password").fill(egui::Color32::DARK_GREEN)
+            id : 0,
+            secret: Secret::default(),
+            show_window : false,
+            user_to_update: String::new(),
+            desc_to_update: String::new(),
+            pass_to_update: String::new()
+        }        
+    }
+}
+
+impl UpdateSecret {
+    pub fn new(id: u64, secret:Secret) -> UpdateSecret{
+        UpdateSecret { 
+            id: id,
+            secret: secret,
+            show_window : true,
+            user_to_update: String::new(),
+            desc_to_update: String::new(),
+            pass_to_update: String::new()
         }
+    }
+
+    pub fn ui(&mut self, ui:&mut egui::Ui) {
+        
+        ui.label(format!("Secret ID to be updated : {}", self.secret.get_string_id()));
+        let secret_desc_label = ui.label("Secret Description:");
+        ui.text_edit_singleline(&mut self.desc_to_update).labelled_by(secret_desc_label.id);
+        
+        let secret_username_label = ui.label("Secret Username:");
+        ui.text_edit_singleline(&mut self.user_to_update).labelled_by(secret_username_label.id);
+
+        let secret_pass_label = ui.label("Secret Password:");
+        ui.text_edit_singleline(&mut self.pass_to_update).labelled_by(secret_pass_label.id);
+        println!("{:?}",ui.text_edit_singleline(&mut self.pass_to_update).labelled_by(secret_pass_label.id).id);
+
+        let button_name = format!("Cancel update for {}",self.secret.get_string_id());
+
+        if ui.button(button_name).clicked() {
+            self.show_window = false;
+        };
+
+    }
+
+    pub fn show(&mut self, ui:&mut egui::Ui) {
+
+        if self.show_window == true {
+            let window_title = format!("Update Secret {}", self.id);
+            egui::Window::new(window_title).show(ui.ctx(), |ui| self.ui(ui));
+        }
+
     }
 }
 
@@ -76,13 +125,13 @@ impl Default for DecryptButton {
 struct MyApp {
     encrpytion_key: String,
     secrets: Vec<Secret>,
-    display_update_window: bool,
     display_create_secret: bool,
     secret_encryptor: MagicCrypt256,
     secret_username: String,
     secret_password: String,
     secret_description: String,
-    decrypt_password: bool
+    decrypt_password: bool,
+    updatable_secrets: Vec<UpdateSecret>
 }
 
 impl Default for MyApp {
@@ -90,13 +139,13 @@ impl Default for MyApp {
         Self {
             encrpytion_key: String::new(),
             secrets : vec![],
-            display_update_window: false,
             display_create_secret: false,
             secret_encryptor:new_magic_crypt!("",256),
             secret_username:String::new(),
             secret_password:String::new(),
             secret_description:String::new(),
-            decrypt_password: false
+            decrypt_password: false,
+            updatable_secrets: Vec::new()
         }
     }
 
@@ -107,13 +156,13 @@ impl MyApp {
         MyApp {
             encrpytion_key: encryption_key,
             secrets: secrets,
-            display_update_window: false,
             display_create_secret: false,
             secret_encryptor:new_magic_crypt!("",256),
             secret_username:String::new(),
             secret_password:String::new(),
             secret_description:String::new(),
-            decrypt_password: false
+            decrypt_password: false,
+            updatable_secrets: Vec::new()
         }
     }
 
@@ -122,8 +171,8 @@ impl MyApp {
     }
 }
 
-impl eframe::App for MyApp {
 
+impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -165,7 +214,7 @@ impl eframe::App for MyApp {
             }
 
             if self.display_create_secret {
-                egui::Window::new("Create New Secret").show(ctx, |ui| {
+                egui::Window::new("Create New Secret").show(&ctx, |ui| {
 
                     let secret_username_label = ui.label("Input Secret Username: ");
                     ui.text_edit_singleline(&mut self.secret_username).labelled_by(secret_username_label.id);
@@ -248,7 +297,7 @@ impl eframe::App for MyApp {
 
                     for secret in secrets {
                         ui.label(secret.get_description());
-                        let username = ui.label(secret.get_description());
+                        ui.label(secret.get_description());
                         ui.label(secret.get_password());
 
                         let delete_button = egui::Button::new("Delete").fill(egui::Color32::DARK_RED);
@@ -285,39 +334,27 @@ impl eframe::App for MyApp {
                         }
 
                         if clicked_update { 
-                            self.display_update_window = true;
-                            
-                            
-                        }
-
-                        if self.display_update_window {
-                            let focus_secret = secret.clone();
-
-                            egui::Window::new("Update Secret").show(ctx,|ui| {
-
-
-                                let focus_id = focus_secret.get_id();
-                                println!("{}", focus_id);
-
-                                let secret_id =  focus_secret.get_string_id();
-                                
-                                ui.label(focus_secret.get_string_id());
-                                ui.label(focus_secret.get_description());
-                                ui.label(focus_secret.get_username());
-                                ui.label(focus_secret.get_password());
-
-                                if ui.button("Abort").clicked() {
-                                    self.display_update_window = false;
+                        
+                            self.updatable_secrets.push(
+                                UpdateSecret {
+                                    id:secret.get_id() as u64,
+                                    secret:secret.clone(),
+                                    show_window: true,
+                                    user_to_update: secret.get_username(),
+                                    desc_to_update: secret.get_description(),
+                                    pass_to_update: secret.get_password()
                                 }
-                            });
+                            )
+                            
                         }
+
 
                         if password_to_decrypt {
                             self.decrypt_password = true
                         }
 
                         if self.decrypt_password { 
-                            egui::Window::new("Secret value").show(ctx, |ui| {
+                            egui::Window::new("Secret value").show(&ctx, |ui| {
 
                                 if self.encrpytion_key.len() > 0 {
 
@@ -349,6 +386,10 @@ impl eframe::App for MyApp {
                             });
                         }
 
+                    }
+
+                    for updateable_secret in &mut self.updatable_secrets {
+                        updateable_secret.show(ui);
                     }
                 });
             }
