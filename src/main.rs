@@ -7,42 +7,9 @@ use types::Secret;
 mod types;
 
 fn main() {
-    let mc = new_magic_crypt!("test_key", 256);
-
-    let test_encryption = mc.encrypt_str_to_base64("test");
-    println!("{}", test_encryption);
-
-    let test_decryption = mc.decrypt_base64_to_string("oycLsdYp+7go/RbEKna/2Q==").unwrap();
-    println!("{}", test_decryption);
-
-    let store = Store::connect(String::from("db/test_conn.db")).unwrap();
-    match store.create_secrets_table() {
-        Ok(()) => {
-            println!("Table created successfully!");
-            ()
-        },
-        Err(er) => {
-            println!("Encountered error while creating secrets table : {}", er);
-            println!("Error Code : {}", er.code.unwrap());
-        }
-    };
-
-    let secrets = match store.fetch_secrets() {
-        Ok(secrets) => {
-            println!("Secrets reading successful!");
-            secrets
-        },
-        Err(er) => {
-            println!("Encountered error while fetching secrets : {}", er);
-            println!("Error Code : {}", er.code.unwrap());
-            Vec::new()
-        }
-    };
-
-    println!("Len of secrets : {}", secrets.len());
 
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(320.0, 240.0)),
+        initial_window_size: Some(egui::vec2(800.0, 600.0)),
         ..Default::default()
     };
     eframe::run_native(
@@ -61,7 +28,9 @@ pub struct UpdateSecret {
     show_window: bool,
     user_to_update: String,
     desc_to_update: String,
-    pass_to_update: String
+    pass_to_update: String,
+    encrpytion_key: String
+
 }
 
 impl Default for UpdateSecret {
@@ -72,7 +41,8 @@ impl Default for UpdateSecret {
             show_window : false,
             user_to_update: String::new(),
             desc_to_update: String::new(),
-            pass_to_update: String::new()
+            pass_to_update: String::new(),
+            encrpytion_key: String::new()
         }        
     }
 }
@@ -85,7 +55,8 @@ impl UpdateSecret {
             show_window : true,
             user_to_update: String::new(),
             desc_to_update: String::new(),
-            pass_to_update: String::new()
+            pass_to_update: String::new(),
+            encrpytion_key: String::new()
         }
     }
 
@@ -100,7 +71,6 @@ impl UpdateSecret {
 
         let secret_pass_label = ui.label("Secret Password:");
         ui.text_edit_singleline(&mut self.pass_to_update).labelled_by(secret_pass_label.id);
-        println!("{:?}",ui.text_edit_singleline(&mut self.pass_to_update).labelled_by(secret_pass_label.id).id);
 
         let button_name = format!("Cancel update for {}",self.secret.get_string_id());
 
@@ -108,12 +78,110 @@ impl UpdateSecret {
             self.show_window = false;
         };
 
+        if ui.button("Submit changes").clicked() {
+            let store = Store::connect(String::from("db/test_conn.db")).unwrap();
+
+            if self.encrpytion_key.len() > 0 {
+                let updater_encryptor = new_magic_crypt!(self.encrpytion_key.clone(), 256);
+                let new_pass = updater_encryptor.encrypt_str_to_base64(self.pass_to_update.clone());
+                store.update_secret(self.id as usize, self.user_to_update.clone(), new_pass, self.desc_to_update.clone()).unwrap();
+
+                println!("Secret updated successfully!");
+
+                self.show_window = false;
+
+
+            }
+        }
+
     }
 
     pub fn show(&mut self, ui:&mut egui::Ui) {
 
         if self.show_window == true {
             let window_title = format!("Update Secret {}", self.id);
+            egui::Window::new(window_title).show(ui.ctx(), |ui| self.ui(ui));
+        }
+
+    }
+}
+
+#[derive(Clone)]
+pub struct DecryptSecret {
+    id: u64,
+    encoded_pass: String,
+    encryption_key: String,
+    decoded_pass: String,
+    show_window : bool
+}
+
+impl Default for DecryptSecret {
+    fn default() -> Self {
+        Self {
+            id:0,
+            encoded_pass:String::new(),
+            encryption_key:String::new(),
+            decoded_pass:String::new(),
+            show_window : true
+        }
+    }
+}
+
+impl DecryptSecret {
+
+    pub fn new(id:u64,encoded_pass:String,encryption_key:String) -> DecryptSecret{
+        DecryptSecret {
+            id: id,
+            encoded_pass:encoded_pass,
+            encryption_key: encryption_key,
+            decoded_pass: String::new(),
+            show_window: true
+        }
+    }
+
+
+    fn decrypt_secret(&mut self) {
+        if self.encryption_key.len() > 0 {
+            let decryptor = new_magic_crypt!(self.encryption_key.clone(), 256);
+
+            let secret_pass = match decryptor.decrypt_base64_to_string(self.encoded_pass.clone()) {
+                Ok(pass) => {
+                    println!("Successfully decoded password !");
+                    pass
+                }
+                Err(er) => {
+                    println!("Caught error : {}", er);
+                    String::from("Can't decrypt secret. Provided Key might be invalid!")
+                }
+            };
+
+            self.decoded_pass = secret_pass;
+        }
+    }
+
+    pub fn ui(&mut self, ui:&mut egui::Ui) {
+        
+        if self.encryption_key.len() > 0 {
+
+            self.decrypt_secret();
+            ui.label(format!("Secret pass for: {}", self.id));
+            ui.text_edit_singleline(&mut self.decoded_pass);
+
+        }
+        else { 
+            ui.add(egui::Label::new("Encryption key not specified. Can't decrypt."));
+        }
+
+        if ui.button("Done").clicked() {
+            self.show_window = false;
+        }
+
+    }
+
+    pub fn show(&mut self, ui:&mut egui::Ui) {
+
+        if self.show_window == true {
+            let window_title = format!("Secret Value for {}", self.id);
             egui::Window::new(window_title).show(ui.ctx(), |ui| self.ui(ui));
         }
 
@@ -130,8 +198,8 @@ struct MyApp {
     secret_username: String,
     secret_password: String,
     secret_description: String,
-    decrypt_password: bool,
-    updatable_secrets: Vec<UpdateSecret>
+    updatable_secrets: Vec<UpdateSecret>,
+    decoded_secrets: Vec<DecryptSecret>
 }
 
 impl Default for MyApp {
@@ -144,9 +212,10 @@ impl Default for MyApp {
             secret_username:String::new(),
             secret_password:String::new(),
             secret_description:String::new(),
-            decrypt_password: false,
-            updatable_secrets: Vec::new()
+            updatable_secrets: Vec::new(),
+            decoded_secrets: Vec::new()
         }
+
     }
 
 }
@@ -161,8 +230,8 @@ impl MyApp {
             secret_username:String::new(),
             secret_password:String::new(),
             secret_description:String::new(),
-            decrypt_password: false,
-            updatable_secrets: Vec::new()
+            updatable_secrets: Vec::new(),
+            decoded_secrets: Vec::new()
         }
     }
 
@@ -176,42 +245,47 @@ impl eframe::App for MyApp {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Secret Store");
-            ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Center), |ui| {
+                ui.heading("Secret Store");
+                ui.add_space(10.0);
                 let encryption_key = ui.label("Encryption key: ");
-                ui.text_edit_singleline(&mut self.encrpytion_key)
-                    .labelled_by(encryption_key.id);
-
+                ui.add(egui::TextEdit::singleline(&mut self.encrpytion_key).password(true)).labelled_by(encryption_key.id);
+                ui.add_space(10.0);
+    
                 if self.encrpytion_key.len() > 0 {
                     self.secret_encryptor = new_magic_crypt!(&self.encrpytion_key, 256);
                 }
-
+                
+                ui.add_space(10.0);
+                if ui.button("Retrieve secrets").clicked() {
+                    let store = Store::connect(String::from("db/test_conn.db")).unwrap();
+    
+                    let secrets = match store.fetch_secrets() {
+                        Ok(secrets) => {
+                            println!("Secrets reading successful!");
+                            secrets
+                        },
+                        Err(er) => {
+                            println!("Encountered error while fetching secrets : {}", er);
+                            println!("Error Code : {}", er.code.unwrap());
+                            Vec::new()
+                        }
+                    };
+    
+                    self.secrets = secrets.clone();
+    
+                } 
+                
+                ui.add_space(10.0);
+                
+                if ui.button("Create Secret").clicked() { 
+                    self.display_create_secret = true;
+                }
             });
 
-            if ui.button("Retrieve secrets").clicked() {
-                let store = Store::connect(String::from("db/test_conn.db")).unwrap();
-
-                let secrets = match store.fetch_secrets() {
-                    Ok(secrets) => {
-                        println!("Secrets reading successful!");
-                        secrets
-                    },
-                    Err(er) => {
-                        println!("Encountered error while fetching secrets : {}", er);
-                        println!("Error Code : {}", er.code.unwrap());
-                        Vec::new()
-                    }
-                };
-
-                self.secrets = secrets.clone();
-
-            } 
 
             let secrets = self.secrets.clone();
 
-            if ui.button("Create Secret").clicked() { 
-                self.display_create_secret = true;
-            }
 
             if self.display_create_secret {
                 egui::Window::new("Create New Secret").show(&ctx, |ui| {
@@ -288,117 +362,100 @@ impl eframe::App for MyApp {
 
             if secrets.len() > 0 {
 
-                egui::Grid::new("secrets_table").num_columns(4).striped(true).show(ui, |ui| {
-                    ui.label("Secret Description");
-                    ui.label("Username");
-                    ui.label("Password");
-                    ui.label("Action");
-                    ui.end_row();
+                ui.add_space(10.0);
 
-                    for secret in secrets {
-                        ui.label(secret.get_description());
-                        ui.label(secret.get_description());
-                        ui.label(secret.get_password());
-
-                        let delete_button = egui::Button::new("Delete").fill(egui::Color32::DARK_RED);
-                        let clicked_delete = ui.add(delete_button).clicked();
-    
-                        let update_button = egui::Button::new("Update").fill(egui::Color32::DARK_GRAY);
-                        let clicked_update = ui.add(update_button).clicked();
-
-                        let decrypt_button = egui::Button::new("Decrypt password").fill(egui::Color32::DARK_GREEN);
-                        let password_to_decrypt = ui.add(decrypt_button).clicked();
-
-                        ui.end_row();
-
-                        if clicked_delete {
-                            let deletion_id = secret.get_id();
-                            
-                            let store = Store::connect(String::from("db/test_conn.db")).unwrap();
-                            store.delete_secret(deletion_id).unwrap();
-
-                            let secrets = match store.fetch_secrets() {
-                                Ok(secrets) => {
-                                    println!("Secrets reading successful!");
-                                    secrets
-                                },
-                                Err(er) => {
-                                    println!("Encountered error while fetching secrets : {}", er);
-                                    println!("Error Code : {}", er.code.unwrap());
-                                    Vec::new()
-                                }
-                            };
-            
-                            self.secrets = secrets.clone();
-                            
-                        }
-
-                        if clicked_update { 
+                egui::ScrollArea::new([true,true]).always_show_scroll(true).show(ui, |ui| {
+                    
+                    egui::Grid::new("secrets_table").num_columns(4).striped(true).spacing([20.0,20.0]).show(ui, |ui| {
                         
-                            self.updatable_secrets.push(
-                                UpdateSecret {
-                                    id:secret.get_id() as u64,
-                                    secret:secret.clone(),
-                                    show_window: true,
-                                    user_to_update: secret.get_username(),
-                                    desc_to_update: secret.get_description(),
-                                    pass_to_update: secret.get_password()
-                                }
-                            )
+                        ui.label("Secret Description");
+                        ui.label("Username");
+                        ui.label("Password");
+                        ui.label("Action");
+                        ui.end_row();
+    
+                        for secret in secrets {
+                            ui.label(secret.get_description());
+                            ui.label(secret.get_description());
+                            ui.label(secret.get_password());
+    
+                            let delete_button = egui::Button::new("Delete").fill(egui::Color32::DARK_RED);
+                            let clicked_delete = ui.add(delete_button).clicked();
+        
+                            let update_button = egui::Button::new("Update").fill(egui::Color32::DARK_GRAY);
+                            let clicked_update = ui.add(update_button).clicked();
+    
+                            let decrypt_button = egui::Button::new("Decrypt password").fill(egui::Color32::DARK_GREEN);
+                            let clicked_decrypt = ui.add(decrypt_button).clicked();
+    
+                            ui.end_row();
+    
+                            if clicked_delete {
+                                let deletion_id = secret.get_id();
+                                
+                                let store = Store::connect(String::from("db/test_conn.db")).unwrap();
+                                store.delete_secret(deletion_id).unwrap();
+    
+                                let secrets = match store.fetch_secrets() {
+                                    Ok(secrets) => {
+                                        println!("Secrets reading successful!");
+                                        secrets
+                                    },
+                                    Err(er) => {
+                                        println!("Encountered error while fetching secrets : {}", er);
+                                        println!("Error Code : {}", er.code.unwrap());
+                                        Vec::new()
+                                    }
+                                };
+                
+                                self.secrets = secrets.clone();
+                                
+                            }
+    
+                            if clicked_update { 
                             
+                                self.updatable_secrets.push(
+                                    UpdateSecret {
+                                        id:secret.get_id() as u64,
+                                        secret:secret.clone(),
+                                        show_window: true,
+                                        user_to_update: secret.get_username(),
+                                        desc_to_update: secret.get_description(),
+                                        pass_to_update: secret.get_password(),
+                                        encrpytion_key: self.encrpytion_key.clone()
+                                    }
+                                )
+                                
+                            }
+    
+    
+                            if clicked_decrypt {
+                                self.decoded_secrets.push(
+                                    DecryptSecret::new(
+                                        secret.get_id() as u64,
+                                        secret.get_password().clone(),
+                                        self.encrpytion_key.clone()
+                                    ))
+                            }
+    
                         }
-
-
-                        if password_to_decrypt {
-                            self.decrypt_password = true
+    
+                        for updateable_secret in &mut self.updatable_secrets {
+                            updateable_secret.show(ui);
                         }
-
-                        if self.decrypt_password { 
-                            egui::Window::new("Secret value").show(&ctx, |ui| {
-
-                                if self.encrpytion_key.len() > 0 {
-
-                                    let encoded_pass = secret.get_password();
-                                    let decryptor = new_magic_crypt!(self.encrpytion_key.clone(), 256);
-                                    println!("encoded Pass: {}", encoded_pass);
-                                    println!("Encryptyion Key: {}", self.encrpytion_key.clone());
-                                    let secret_pass = match decryptor.decrypt_base64_to_string(encoded_pass) {
-                                        Ok(pass) => {
-                                            println!("Successfully decoded password !");
-                                            pass
-                                        }
-                                        Err(er) => {
-                                            println!("Caught error : {}", er);
-                                            String::new()
-                                        }
-                                    };
-                                    //ui.label(format!("Secret pass for: {} - username : {}", secret.get_description(), secret.get_username()));
-                                    ui.label(secret_pass);
-
-                                }
-                                else { 
-                                    ui.add(egui::Label::new("Encryption key not specified. Can't decrypt."));
-                                }
-
-                                if ui.button("Done").clicked() {
-                                    self.decrypt_password = false;
-                                }
-                            });
+    
+                        for decoded_secret in &mut self.decoded_secrets {
+                            decoded_secret.show(ui);
                         }
+                    });
 
-                    }
-
-                    for updateable_secret in &mut self.updatable_secrets {
-                        updateable_secret.show(ui);
-                    }
                 });
+
             }
-            
+                
             else {
                 ui.label("No secrets configured yet");
             }
-
         });
     }
-
 }
