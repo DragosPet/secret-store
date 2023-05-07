@@ -4,7 +4,7 @@ use crate::types::Secret;
 use sqlite::{Connection, Error};
 
 pub struct Store {
-    database_connection : Connection 
+    database_connection : Connection
 }
 
 impl Store {

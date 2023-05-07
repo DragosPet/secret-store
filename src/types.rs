@@ -6,6 +6,17 @@ pub struct Secret {
     description: String
 }
 
+impl Default for Secret {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            username: String::new(),
+            password: String::new(),
+            description: String::new()
+        }
+    }
+}
+
 impl Secret {
     pub fn new(id: usize, username:String, password:String, description:String)-> Secret{
         Secret{
@@ -34,10 +45,6 @@ impl Secret {
 
     pub fn get_string_id(&self) -> String {
         self.id.to_string()
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("{}-{}-{}", self.username.clone(),self.password.clone(),self.description.clone())
     }
 
 }
